@@ -16,13 +16,11 @@ import {
   Loader2 
 } from 'lucide-react';
 
-// Import dinámico de Leaflet
 const ColombiaMap = dynamic(() => import('../components/ColombiaMap'), {
   ssr: false,
   loading: () => <div className="h-full w-full bg-slate-100 flex items-center justify-center">Cargando mapa...</div>,
 });
 
-// Columnas requeridas que debe contener el archivo CSV
 const REQUIRED_HEADERS = [
   'Codigo',
   'Nombre POA',
@@ -47,19 +45,19 @@ export default function Dashboard() {
   const [pendingCsvData, setPendingCsvData] = useState<any[] | null>(null);
   const [csvFileName, setCsvFileName] = useState<string>('');
   const [csvError, setCsvError] = useState<string | null>(null);
+  const [excludedCount, setExcludedCount] = useState<number>(0);
   const [showConfirmCsvModal, setShowConfirmCsvModal] = useState(false);
 
-  // Filtros independientes para las estadísticas
+  // Filtros de estadísticas
   const [filtroGrafica1Estado, setFiltroGrafica1Estado] = useState<string>('TODOS');
   const [filtroGrafica2Comunidad, setFiltroGrafica2Comunidad] = useState<string>('TODOS');
 
-  // Filtros tipo Excel para la tabla
+  // Filtros de tabla
   const [filtroTablaEstado, setFiltroTablaEstado] = useState<string[]>([]);
   const [filtroTablaComunidad, setFiltroTablaComunidad] = useState<string[]>([]);
   const [busquedaPOA, setBusquedaPOA] = useState<string>('');
   const [dropdownOpen, setDropdownOpen] = useState<'estado' | 'comunidad' | null>(null);
 
-  // Obtener datos desde Supabase
   const fetchData = async () => {
     setLoading(true);
     const { data, error } = await supabase.from('Proyectos').select('*');
@@ -89,10 +87,9 @@ export default function Dashboard() {
   const uniqueComunidades = useMemo(() => Array.from(new Set(proyectos.map((p) => p['Tipo Comunidad']))), [proyectos]);
 
   // ==========================================
-  // PARSER Y VALIDACIÓN DE CSV
+  // PARSER Y FILTRADO CSV (Solo HIDROCARBUROS)
   // ==========================================
   const parseCSV = (text: string) => {
-    // Detectar si el delimitador es coma o punto y coma
     const firstLine = text.split(/\r\n|\n/)[0];
     const delimiter = firstLine.includes(';') ? ';' : ',';
 
@@ -115,7 +112,7 @@ export default function Dashboard() {
     }
     if (currentLine.trim()) lines.push(currentLine);
 
-    if (lines.length < 2) throw new Error('El archivo CSV está vacío o no contiene filas de datos.');
+    if (lines.length < 2) throw new Error('El archivo CSV está vacío o no contiene filas.');
 
     const parseRow = (rowStr: string) => {
       const values: string[] = [];
@@ -138,19 +135,20 @@ export default function Dashboard() {
 
     const headers = parseRow(lines[0]).map((h) => h.trim());
 
-    // Validar encabezados requeridos
     const missingHeaders = REQUIRED_HEADERS.filter(
       (req) => !headers.some((h) => h.toLowerCase() === req.toLowerCase())
     );
 
     if (missingHeaders.length > 0) {
       throw new Error(
-        `El CSV no tiene los encabezados correctos. Columnas faltantes: ${missingHeaders.join(', ')}`
+        `El CSV no tiene los encabezados correctos. Faltan: ${missingHeaders.join(', ')}`
       );
     }
 
-    // Mapear filas a objetos compatibles
-    const rows = lines.slice(1).map((line) => {
+    let totalRawRows = 0;
+    const validRows: any[] = [];
+
+    lines.slice(1).forEach((line) => {
       const values = parseRow(line);
       const obj: any = {};
       headers.forEach((header, index) => {
@@ -164,10 +162,19 @@ export default function Dashboard() {
         }
         obj[matchedKey] = value;
       });
-      return obj;
+
+      if (obj.Codigo && obj['Nombre POA']) {
+        totalRawRows++;
+        // 🚀 FILTRO CONDICIONAL: Solo acepta Nombre Sector === 'HIDROCARBUROS'
+        const sector = (obj['Nombre Sector'] || '').toString().trim().toUpperCase();
+        if (sector === 'HIDROCARBUROS') {
+          validRows.push(obj);
+        }
+      }
     });
 
-    return rows.filter((r) => r.Codigo && r['Nombre POA']);
+    setExcludedCount(totalRawRows - validRows.length);
+    return validRows;
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -183,7 +190,7 @@ export default function Dashboard() {
         const text = event.target?.result as string;
         const parsed = parseCSV(text);
         if (parsed.length === 0) {
-          throw new Error('No se encontraron registros válidos para importar.');
+          throw new Error('No se encontraron registros válidos con sector HIDROCARBUROS para importar.');
         }
         setPendingCsvData(parsed);
         setShowConfirmCsvModal(true);
@@ -197,7 +204,6 @@ export default function Dashboard() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Ejecutar reemplazo total en Supabase
   const executeDatabaseReplace = async () => {
     if (!pendingCsvData || pendingCsvData.length === 0) return;
 
@@ -205,7 +211,6 @@ export default function Dashboard() {
     setCsvError(null);
 
     try {
-      // 1. Borrar toda la tabla
       const { error: deleteError } = await supabase
         .from('Proyectos')
         .delete()
@@ -215,7 +220,6 @@ export default function Dashboard() {
         throw new Error(`Error al vaciar la base de datos: ${deleteError.message}`);
       }
 
-      // 2. Insertar los nuevos datos en lotes de 500 registros
       const BATCH_SIZE = 500;
       for (let i = 0; i < pendingCsvData.length; i += BATCH_SIZE) {
         const batch = pendingCsvData.slice(i, i + BATCH_SIZE);
@@ -228,7 +232,6 @@ export default function Dashboard() {
         }
       }
 
-      // 3. Recargar la aplicación
       await fetchData();
       setShowConfirmCsvModal(false);
       setPendingCsvData(null);
@@ -239,7 +242,7 @@ export default function Dashboard() {
     }
   };
 
-  // Datos Gráfica 1 (Tipo Comunidad filtrado por Estado)
+  // Gráficas
   const dataGrafica1 = useMemo(() => {
     const list = filtroGrafica1Estado === 'TODOS'
       ? proyectos
@@ -253,7 +256,6 @@ export default function Dashboard() {
     return counts;
   }, [proyectos, filtroGrafica1Estado]);
 
-  // Datos Gráfica 2 (Nombre Estado filtrado por Tipo Comunidad)
   const dataGrafica2 = useMemo(() => {
     const list = filtroGrafica2Comunidad === 'TODOS'
       ? proyectos
@@ -266,7 +268,7 @@ export default function Dashboard() {
     return counts;
   }, [proyectos, filtroGrafica2Comunidad, uniqueEstados]);
 
-  // Proyectos filtrados para la Tabla
+  // Tabla
   const proyectosTabla = useMemo(() => {
     return proyectos.filter((p) => {
       const matchPOA = p['Nombre POA']?.toLowerCase().includes(busquedaPOA.toLowerCase());
@@ -283,14 +285,13 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-slate-900 text-white">
-        <p className="animate-pulse text-lg font-semibold tracking-wide">Cargando Sistema de Gestión de Proyectos...</p>
+        <p className="animate-pulse text-lg font-semibold tracking-wide">Cargando SiCoPre...</p>
       </div>
     );
   }
 
   return (
     <div className="flex h-screen w-screen bg-slate-100 overflow-hidden font-sans">
-      {/* Input oculto para subir CSV */}
       <input
         type="file"
         ref={fileInputRef}
@@ -301,26 +302,46 @@ export default function Dashboard() {
 
       {/* SECCIÓN IZQUIERDA (3/5 ANCHO) */}
       <div className="w-3/5 h-full flex flex-col border-r border-slate-200 bg-white shadow-xl z-10 overflow-y-auto">
-        {/* Header con Botón de Cargar CSV */}
-        <div className="p-4 border-b border-slate-200 bg-slate-900 text-white flex items-center justify-between">
-          <div>
-            <h1 className="text-base font-bold tracking-tight">SIG Proyectos - Hidrocarburos</h1>
-            <p className="text-xs text-slate-400">Total Proyectos: {proyectos.length}</p>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            {/* Botón Reemplazar CSV */}
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm transition border border-indigo-500/50 cursor-pointer"
-              title="Cargar CSV para reemplazar la base de datos"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span>Cargar CSV</span>
-            </button>
-            <Layers className="w-5 h-5 text-indigo-400 ml-1" />
-          </div>
-        </div>
+        
+{/* 📌 HEADER CLARO CON LOGOS MÁS GRANDES Y NOMBRE SiCoPre */}
+<div className="px-4 py-3 border-b border-slate-200 bg-white flex items-center justify-between shadow-xs">
+  <div className="flex items-center gap-3.5">
+    {/* LOGO 1 (MÁS GRANDE) */}
+    <img 
+      src="/LOGO 1.png" 
+      alt="Logo 1" 
+      className="h-14 md:h-16 w-auto max-w-[130px] object-contain drop-shadow-xs"
+      onError={(e) => (e.currentTarget.style.display = 'none')}
+    />
+    <div>
+      <h1 className="text-xl font-black tracking-tight text-slate-900">
+        SiCoPre
+      </h1>
+      <p className="text-xs text-slate-500 font-semibold">
+        Total Proyectos: <span className="text-indigo-600 font-bold">{proyectos.length}</span>
+      </p>
+    </div>
+  </div>
+  
+  <div className="flex items-center gap-4">
+    {/* Botón Cargar CSV */}
+    <button
+      onClick={() => fileInputRef.current?.click()}
+      className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3.5 py-2 rounded-xl shadow-sm transition-all hover:shadow cursor-pointer"
+      title="Cargar CSV para reemplazar la base de datos"
+    >
+      <Upload className="w-4 h-4" />
+      <span>Cargar CSV</span>
+    </button>
+    {/* LOGO 2 (MÁS GRANDE) */}
+    <img 
+      src="/LOGO 2.png" 
+      alt="Logo 2" 
+      className="h-14 md:h-16 w-auto max-w-[130px] object-contain drop-shadow-xs"
+      onError={(e) => (e.currentTarget.style.display = 'none')}
+    />
+  </div>
+</div>
 
         {/* Mensaje de Error de Validación CSV */}
         {csvError && !showConfirmCsvModal && (
@@ -337,7 +358,7 @@ export default function Dashboard() {
 
         {/* SECCIÓN ESTADÍSTICAS BÁSICAS */}
         <div className="p-4 grid grid-cols-2 gap-4 bg-slate-50/50 border-b border-slate-200">
-          {/* Gráfica 1: Tipo Comunidad */}
+          {/* Gráfica 1 */}
           <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
@@ -379,7 +400,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Gráfica 2: Nombre Estado */}
+          {/* Gráfica 2 */}
           <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
@@ -440,13 +461,13 @@ export default function Dashboard() {
             className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mb-3 outline-none focus:border-indigo-500 transition"
           />
 
-          {/* Tabla */}
+          {/* Tabla con Columna de Código */}
           <div className="flex-1 overflow-auto border border-slate-200 rounded-xl bg-white relative">
             <table className="w-full text-left text-xs border-collapse">
               <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 sticky top-0 z-10">
                 <tr>
+                  <th className="p-2.5 w-24">Código</th>
                   <th className="p-2.5">Nombre POA</th>
-                  {/* Filtro Dropdown Estado */}
                   <th className="p-2.5 relative">
                     <div className="flex items-center justify-between cursor-pointer" onClick={() => setDropdownOpen(dropdownOpen === 'estado' ? null : 'estado')}>
                       <span>Estado</span>
@@ -472,7 +493,6 @@ export default function Dashboard() {
                       </div>
                     )}
                   </th>
-                  {/* Filtro Dropdown Tipo Comunidad */}
                   <th className="p-2.5 relative">
                     <div className="flex items-center justify-between cursor-pointer" onClick={() => setDropdownOpen(dropdownOpen === 'comunidad' ? null : 'comunidad')}>
                       <span>Comunidad</span>
@@ -504,9 +524,17 @@ export default function Dashboard() {
               <tbody className="divide-y divide-slate-100">
                 {proyectosTabla.map((p) => (
                   <tr key={p.Codigo} className="hover:bg-slate-50/80 transition">
-                    <td className="p-2.5 font-medium text-slate-800 text-[11px] leading-relaxed break-words whitespace-normal align-top max-w-[220px]">
+                    {/* Código del Proyecto */}
+                    <td className="p-2.5 font-mono text-[10px] text-slate-500 font-semibold align-top whitespace-nowrap">
+                      {p.Codigo}
+                    </td>
+                    
+                    {/* Nombre POA */}
+                    <td className="p-2.5 font-medium text-slate-800 text-[11px] leading-relaxed break-words whitespace-normal align-top max-w-[200px]">
                       {p['Nombre POA']}
                     </td>
+
+                    {/* Estado */}
                     <td className="p-2.5 whitespace-nowrap align-top">
                       <span
                         className="inline-block px-2 py-0.5 rounded-full text-white text-[10px] font-semibold tracking-tight shadow-sm"
@@ -515,13 +543,17 @@ export default function Dashboard() {
                         {p['Nombre Estado']}
                       </span>
                     </td>
+
+                    {/* Comunidad */}
                     <td className="p-2.5 whitespace-nowrap text-[11px] text-slate-600 align-top">
                       {p['Tipo Comunidad']}
                     </td>
+
+                    {/* Acción */}
                     <td className="p-2.5 text-center align-top">
                       <button
                         onClick={() => setSelectedProyecto(p)}
-                        className="p-1.5 hover:bg-indigo-50 text-indigo-600 rounded-lg transition"
+                        className="p-1.5 hover:bg-indigo-50 text-indigo-600 rounded-lg transition cursor-pointer"
                         title="Ver detalle"
                       >
                         <Eye className="w-4 h-4" />
@@ -540,7 +572,7 @@ export default function Dashboard() {
         <ColombiaMap proyectos={proyectos} onSelectProyecto={(p) => setSelectedProyecto(p)} />
       </div>
 
-      {/* ⚠️ MODAL DE CONFIRMACIÓN PARA REEMPLAZAR BASE DE DATOS */}
+      {/* MODAL DE CONFIRMACIÓN CSV */}
       {showConfirmCsvModal && (
         <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
@@ -571,17 +603,19 @@ export default function Dashboard() {
                   <span className="font-bold text-slate-700">Archivo:</span> {csvFileName}
                 </p>
                 <p>
-                  <span className="font-bold text-slate-700">Registros validados:</span>{' '}
-                  <span className="text-indigo-600 font-bold">{pendingCsvData?.length} proyectos</span>
+                  <span className="font-bold text-slate-700">Proyectos HIDROCARBUROS a cargar:</span>{' '}
+                  <span className="text-indigo-600 font-bold">{pendingCsvData?.length}</span>
                 </p>
+                {excludedCount > 0 && (
+                  <p className="text-amber-600 font-semibold">
+                    ⚠️ Se excluyeron {excludedCount} registros cuyo sector no es HIDROCARBUROS.
+                  </p>
+                )}
                 <p>
                   <span className="font-bold text-slate-700">Registros actuales a borrar:</span>{' '}
                   <span className="text-rose-600 font-bold">{proyectos.length} proyectos</span>
                 </p>
               </div>
-              <p>
-                Se borrarán todos los datos actuales de la tabla <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-800 font-mono">Proyectos</code> en Supabase y se insertarán los datos nuevos del CSV.
-              </p>
 
               {csvError && (
                 <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-[11px]">

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { X, Eye } from 'lucide-react';
+import { X, Eye, AlertCircle } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 
 // =========================================================================
@@ -11,17 +11,17 @@ const MAP_CONFIG = {
   USE_AUTO_FIT: false, 
 
   // Parámetros manuales:
-  ZOOM_LEVEL: 6.0,          // Nivel de zoom con decimales
-  CENTER_LAT: 4.5,          // Latitud central
-  CENTER_LNG: -73.2,        // Longitud central
+  ZOOM_LEVEL: 6,
+  CENTER_LAT: 4.5,
+  CENTER_LNG: -73.2,
 
   AUTO_FIT_PADDING: [25, 25] as [number, number],
 
-  // Calibración de bordes dinámicos
+  // Bordes dinámicos
   BORDER_DEFAULT_COLOR: '#ffffff',
   BORDER_DEFAULT_WEIGHT: 1.2,
-  BORDER_HOVER_COLOR: '#0f172a',   // Color borde hover
-  BORDER_HOVER_WEIGHT: 3.5,        // Grosor borde hover
+  BORDER_HOVER_COLOR: '#0f172a',
+  BORDER_HOVER_WEIGHT: 3.5,
 };
 
 export interface Proyecto {
@@ -52,8 +52,8 @@ export const COMUNIDAD_COLORS: Record<string, string> = {
   AFRODESCENDIENTE: '#d97706' // Ámbar
 };
 
-const ESTADOS_DISPONIBLES = Object.keys(ESTADO_COLORS);
-const COMUNIDADES_DISPONIBLES = ['INDÍGENA', 'AFRODESCENDIENTE'];
+export const ESTADOS_DISPONIBLES = Object.keys(ESTADO_COLORS);
+export const COMUNIDADES_DISPONIBLES = ['INDÍGENA', 'AFRODESCENDIENTE'];
 
 interface Props {
   proyectos: Proyecto[];
@@ -68,12 +68,15 @@ export default function ColombiaMap({ proyectos, onSelectProyecto }: Props) {
   const [geoData, setGeoData] = useState<any>(null);
   const [leafletModule, setLeafletModule] = useState<any>(null);
 
-  // Departamento activo seleccionado al hacer clic
+  // Departamento activo
   const [selectedDeptName, setSelectedDeptName] = useState<string | null>(null);
 
   // Filtros de mapa
   const [selectedEstados, setSelectedEstados] = useState<string[]>(ESTADOS_DISPONIBLES);
   const [selectedComunidades, setSelectedComunidades] = useState<string[]>(COMUNIDADES_DISPONIBLES);
+
+  // Comprobar si falta seleccionar algún filtro
+  const hayFiltroVacio = selectedEstados.length === 0 || selectedComunidades.length === 0;
 
   useEffect(() => {
     import('leaflet').then((L) => {
@@ -103,9 +106,8 @@ export default function ColombiaMap({ proyectos, onSelectProyecto }: Props) {
       .replace(/[\u0300-\u036f]/g, '')
       .trim();
 
-  // Proyectos y estadísticas del departamento actualmente seleccionado
   const deptData = useMemo(() => {
-    if (!selectedDeptName) return null;
+    if (!selectedDeptName || hayFiltroVacio) return null;
     const norm = normalizeText(selectedDeptName);
     const dptProyectos = proyectosFiltrados.filter(
       (p) => normalizeText(p.Departamento) === norm
@@ -127,10 +129,19 @@ export default function ColombiaMap({ proyectos, onSelectProyecto }: Props) {
       estadoCounts,
       comCounts,
     };
-  }, [selectedDeptName, proyectosFiltrados]);
+  }, [selectedDeptName, proyectosFiltrados, hayFiltroVacio]);
 
-  // Función determinista para estilo base y hover
   const getFeatureStyle = useCallback((feature: any, isHover: boolean = false) => {
+    if (hayFiltroVacio) {
+      return {
+        fillColor: '#f1f5f9',
+        weight: isHover ? MAP_CONFIG.BORDER_HOVER_WEIGHT : MAP_CONFIG.BORDER_DEFAULT_WEIGHT,
+        opacity: 1,
+        color: isHover ? MAP_CONFIG.BORDER_HOVER_COLOR : MAP_CONFIG.BORDER_DEFAULT_COLOR,
+        fillOpacity: 0.3,
+      };
+    }
+
     const dptName = normalizeText(feature?.properties?.NOMBRE_DPT || '');
     const dptProyectos = proyectosFiltrados.filter(
       (p: Proyecto) => normalizeText(p.Departamento) === dptName
@@ -166,9 +177,8 @@ export default function ColombiaMap({ proyectos, onSelectProyecto }: Props) {
       color: isHover ? MAP_CONFIG.BORDER_HOVER_COLOR : MAP_CONFIG.BORDER_DEFAULT_COLOR,
       fillOpacity,
     };
-  }, [proyectosFiltrados]);
+  }, [proyectosFiltrados, hayFiltroVacio]);
 
-  // Inicializar Leaflet
   useEffect(() => {
     if (!leafletModule || !mapContainerRef.current || mapInstanceRef.current) return;
 
@@ -196,7 +206,6 @@ export default function ColombiaMap({ proyectos, onSelectProyecto }: Props) {
     };
   }, [leafletModule]);
 
-  // Capa GeoJSON y eventos
   useEffect(() => {
     if (!leafletModule || !mapInstanceRef.current || !geoData) return;
 
@@ -225,8 +234,9 @@ export default function ColombiaMap({ proyectos, onSelectProyecto }: Props) {
             }
           },
           click: () => {
-            // Abrir tarjeta React sin mover el mapa ni cortar bordes
-            setSelectedDeptName(feature.properties.NOMBRE_DPT);
+            if (!hayFiltroVacio) {
+              setSelectedDeptName(feature.properties.NOMBRE_DPT);
+            }
           },
         });
       },
@@ -241,7 +251,7 @@ export default function ColombiaMap({ proyectos, onSelectProyecto }: Props) {
     }
 
     geoJsonLayerRef.current = geoJsonLayer;
-  }, [leafletModule, geoData, proyectosFiltrados, getFeatureStyle]);
+  }, [leafletModule, geoData, proyectosFiltrados, getFeatureStyle, hayFiltroVacio]);
 
   const toggleFilter = (list: string[], setList: React.Dispatch<React.SetStateAction<string[]>>, item: string) => {
     setList(list.includes(item) ? list.filter((i) => i !== item) : [...list, item]);
@@ -249,7 +259,7 @@ export default function ColombiaMap({ proyectos, onSelectProyecto }: Props) {
 
   return (
     <div 
-      className="relative w-full h-full flex flex-col bg-slate-50 overflow-hidden"
+      className="relative w-full h-full flex flex-col bg-slate-50 overflow-hidden select-none"
       onMouseLeave={() => {
         if (hoveredLayerRef.current) {
           hoveredLayerRef.current.setStyle(getFeatureStyle(hoveredLayerRef.current.feature, false));
@@ -257,111 +267,133 @@ export default function ColombiaMap({ proyectos, onSelectProyecto }: Props) {
         }
       }}
     >
-      {/* 📌 FILTROS DEL MAPA COMPACTOS (Esquina Superior Derecha) */}
-      {/* 📌 FILTROS DEL MAPA COMPACTOS (Esquina Superior Derecha con "Todos" y "Limpiar") */}
-<div className="absolute top-3 right-3 z-[1000] bg-white/95 backdrop-blur-md p-2 rounded-xl shadow-md border border-slate-200/80 w-36 flex flex-col gap-1.5 max-h-[85vh] overflow-y-auto select-none">
-  
-  {/* Encabezado con Botones Rápidos */}
-  <div className="border-b border-slate-100 pb-1">
-    <div className="flex items-center justify-between mb-1">
-      <span className="text-[9px] font-bold text-slate-800 uppercase tracking-wide">Filtros</span>
-      <span className="text-[8px] text-slate-400 font-medium">({selectedEstados.length + selectedComunidades.length})</span>
-    </div>
-    {/* Botones Todos y Limpiar */}
-    <div className="flex items-center justify-between text-[8px] font-bold">
-      <button
-        onClick={() => {
-          setSelectedEstados(ESTADOS_DISPONIBLES);
-          setSelectedComunidades(COMUNIDADES_DISPONIBLES);
-        }}
-        className="text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
-      >
-        Seleccionar todos
-      </button>
-      <button
-        onClick={() => {
-          setSelectedEstados([]);
-          setSelectedComunidades([]);
-        }}
-        className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
-      >
-        Limpiar
-      </button>
-    </div>
-  </div>
+      {/* 📌 FILTRO DE COMUNIDAD (ESQUINA SUPERIOR IZQUIERDA) */}
+      <div className="absolute top-3 left-3 z-[1000] bg-white/95 backdrop-blur-md p-2 rounded-xl shadow-md border border-slate-200/80 w-36 flex flex-col gap-1.5">
+        <div className="border-b border-slate-100 pb-1">
+          <div className="flex items-center justify-between mb-0.5">
+            <span className="text-[9px] font-bold text-slate-800 uppercase tracking-wide">Comunidad</span>
+            <span className="text-[8px] text-slate-400 font-medium">({selectedComunidades.length})</span>
+          </div>
+          <div className="flex items-center justify-between text-[8px] font-bold">
+            <button
+              onClick={() => setSelectedComunidades(COMUNIDADES_DISPONIBLES)}
+              className="text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
+            >
+              Todos
+            </button>
+            <button
+              onClick={() => setSelectedComunidades([])}
+              className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
+            >
+              Limpiar
+            </button>
+          </div>
+        </div>
 
-  {/* Sección 1: Estados */}
-  <div>
-    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tight block mb-0.5">
-      Estado
-    </span>
-    <div className="flex flex-col gap-0.5">
-      {ESTADOS_DISPONIBLES.map((st) => {
-        const isSelected = selectedEstados.includes(st);
-        return (
-          <button
-            key={st}
-            onClick={() => toggleFilter(selectedEstados, setSelectedEstados, st)}
-            className={`w-full flex items-center justify-between px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all border text-left ${
-              isSelected
-                ? 'bg-slate-900 text-white border-transparent'
-                : 'bg-slate-50/60 text-slate-400 border-slate-200/50 hover:bg-slate-100'
-            }`}
-          >
-            <div className="flex items-center gap-1.5 truncate">
-              <span
-                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                  isSelected ? 'opacity-100' : 'opacity-30'
+        <div className="flex flex-col gap-0.5">
+          {COMUNIDADES_DISPONIBLES.map((tc) => {
+            const isSelected = selectedComunidades.includes(tc);
+            return (
+              <button
+                key={tc}
+                onClick={() => toggleFilter(selectedComunidades, setSelectedComunidades, tc)}
+                className={`w-full flex items-center justify-between px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all border text-left cursor-pointer ${
+                  isSelected
+                    ? 'bg-slate-900 text-white border-transparent'
+                    : 'bg-slate-50/60 text-slate-400 border-slate-200/50 hover:bg-slate-100'
                 }`}
-                style={{ backgroundColor: ESTADO_COLORS[st] }}
-              />
-              <span className="truncate">{st}</span>
-            </div>
-          </button>
-        );
-      })}
-    </div>
-  </div>
+              >
+                <div className="flex items-center gap-1.5 truncate">
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                      isSelected ? 'opacity-100' : 'opacity-30'
+                    }`}
+                    style={{ backgroundColor: COMUNIDAD_COLORS[tc] }}
+                  />
+                  <span className="truncate">{tc}</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
-  {/* Sección 2: Comunidad */}
-  <div className="border-t border-slate-100 pt-1">
-    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tight block mb-0.5">
-      Comunidad
-    </span>
-    <div className="flex flex-col gap-0.5">
-      {COMUNIDADES_DISPONIBLES.map((tc) => {
-        const isSelected = selectedComunidades.includes(tc);
-        return (
-          <button
-            key={tc}
-            onClick={() => toggleFilter(selectedComunidades, setSelectedComunidades, tc)}
-            className={`w-full flex items-center justify-between px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all border text-left ${
-              isSelected
-                ? 'bg-slate-900 text-white border-transparent'
-                : 'bg-slate-50/60 text-slate-400 border-slate-200/50 hover:bg-slate-100'
-            }`}
-          >
-            <div className="flex items-center gap-1.5 truncate">
-              <span
-                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                  isSelected ? 'opacity-100' : 'opacity-30'
+      {/* 📌 FILTRO DE ESTADO (ESQUINA SUPERIOR DERECHA) */}
+      <div className="absolute top-3 right-3 z-[1000] bg-white/95 backdrop-blur-md p-2 rounded-xl shadow-md border border-slate-200/80 w-36 flex flex-col gap-1.5 max-h-[85vh] overflow-y-auto">
+        <div className="border-b border-slate-100 pb-1">
+          <div className="flex items-center justify-between mb-0.5">
+            <span className="text-[9px] font-bold text-slate-800 uppercase tracking-wide">Estado</span>
+            <span className="text-[8px] text-slate-400 font-medium">({selectedEstados.length})</span>
+          </div>
+          <div className="flex items-center justify-between text-[8px] font-bold">
+            <button
+              onClick={() => setSelectedEstados(ESTADOS_DISPONIBLES)}
+              className="text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
+            >
+              Todos
+            </button>
+            <button
+              onClick={() => setSelectedEstados([])}
+              className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
+            >
+              Limpiar
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-0.5">
+          {ESTADOS_DISPONIBLES.map((st) => {
+            const isSelected = selectedEstados.includes(st);
+            return (
+              <button
+                key={st}
+                onClick={() => toggleFilter(selectedEstados, setSelectedEstados, st)}
+                className={`w-full flex items-center justify-between px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all border text-left cursor-pointer ${
+                  isSelected
+                    ? 'bg-slate-900 text-white border-transparent'
+                    : 'bg-slate-50/60 text-slate-400 border-slate-200/50 hover:bg-slate-100'
                 }`}
-                style={{ backgroundColor: COMUNIDAD_COLORS[tc] }}
-              />
-              <span className="truncate">{tc}</span>
-            </div>
-          </button>
-        );
-      })}
-    </div>
-  </div>
-</div>
+              >
+                <div className="flex items-center gap-1.5 truncate">
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                      isSelected ? 'opacity-100' : 'opacity-30'
+                    }`}
+                    style={{ backgroundColor: ESTADO_COLORS[st] }}
+                  />
+                  <span className="truncate">{st}</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
-      {/* 📌 TARJETA DETALLADA DEL DEPARTAMENTO (Esquina Inferior Izquierda - Nunca se corta ni superpone) */}
-      {deptData && (
+      {/* ⚠️ MENSAJE DE ADVERTENCIA CUANDO UN FILTRO ESTÁ SIN SELECCIÓN */}
+      {hayFiltroVacio && (
+        <div className="absolute inset-0 z-[1500] flex items-center justify-center p-6 bg-slate-900/20 backdrop-blur-[2px] pointer-events-none">
+          <div className="bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-amber-200 max-w-xs text-center flex flex-col items-center gap-2 pointer-events-auto animate-in fade-in zoom-in-95 duration-150">
+            <AlertCircle className="w-8 h-8 text-amber-500 shrink-0" />
+            <h4 className="text-xs font-bold text-slate-800 uppercase">Sin filtros activos</h4>
+            <p className="text-[11px] text-slate-600 leading-snug">
+              No se mostrarán datos en el mapa debido a que debes seleccionar al menos <strong>un Tipo de Comunidad</strong> y <strong>un Nombre de Estado</strong>.
+            </p>
+            <button
+              onClick={() => {
+                setSelectedEstados(ESTADOS_DISPONIBLES);
+                setSelectedComunidades(COMUNIDADES_DISPONIBLES);
+              }}
+              className="mt-1 text-[10px] bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-1.5 rounded-lg shadow transition cursor-pointer"
+            >
+              Restablecer todos los filtros
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 📌 TARJETA DETALLADA DEL DEPARTAMENTO */}
+      {deptData && !hayFiltroVacio && (
         <div className="absolute bottom-3 left-3 z-[1000] bg-white/95 backdrop-blur-md p-3 rounded-2xl shadow-2xl border border-slate-200/90 w-72 max-h-[70vh] flex flex-col gap-2.5 animate-in fade-in zoom-in-95 duration-150">
-          
-          {/* Header */}
           <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
             <div>
               <h3 className="text-xs font-bold text-slate-900 uppercase tracking-tight">{deptData.nombre}</h3>
@@ -369,7 +401,7 @@ export default function ColombiaMap({ proyectos, onSelectProyecto }: Props) {
             </div>
             <button
               onClick={() => setSelectedDeptName(null)}
-              className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition"
+              className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -380,13 +412,11 @@ export default function ColombiaMap({ proyectos, onSelectProyecto }: Props) {
           ) : (
             <div className="flex flex-col gap-2.5 overflow-y-auto pr-0.5">
               
-              {/* Proporción por Estado con Desglose */}
+              {/* Proporción por Estado */}
               <div>
                 <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                   Proporción por Estado
                 </span>
-                
-                {/* Barra apilada */}
                 <div className="h-2 w-full flex rounded-full overflow-hidden bg-slate-100 mb-1.5">
                   {Object.entries(deptData.estadoCounts).map(([estado, count]) => {
                     const pct = ((count / deptData.total) * 100).toFixed(1);
@@ -400,8 +430,6 @@ export default function ColombiaMap({ proyectos, onSelectProyecto }: Props) {
                     );
                   })}
                 </div>
-
-                {/* Desglose de Valores y Porcentajes */}
                 <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 bg-slate-50 p-1.5 rounded-lg border border-slate-100">
                   {Object.entries(deptData.estadoCounts).map(([estado, count]) => {
                     const pct = ((count / deptData.total) * 100).toFixed(1);
@@ -418,13 +446,11 @@ export default function ColombiaMap({ proyectos, onSelectProyecto }: Props) {
                 </div>
               </div>
 
-              {/* Proporción por Tipo Comunidad con Desglose */}
+              {/* Proporción por Comunidad */}
               <div>
                 <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                   Proporción por Comunidad
                 </span>
-
-                {/* Barra apilada */}
                 <div className="h-2 w-full flex rounded-full overflow-hidden bg-slate-100 mb-1.5">
                   {Object.entries(deptData.comCounts).map(([com, count]) => {
                     const pct = ((count / deptData.total) * 100).toFixed(1);
@@ -438,8 +464,6 @@ export default function ColombiaMap({ proyectos, onSelectProyecto }: Props) {
                     );
                   })}
                 </div>
-
-                {/* Desglose de Valores y Porcentajes */}
                 <div className="flex flex-col gap-0.5 bg-slate-50 p-1.5 rounded-lg border border-slate-100">
                   {Object.entries(deptData.comCounts).map(([com, count]) => {
                     const pct = ((count / deptData.total) * 100).toFixed(1);
@@ -456,7 +480,7 @@ export default function ColombiaMap({ proyectos, onSelectProyecto }: Props) {
                 </div>
               </div>
 
-              {/* Lista de Proyectos del Departamento */}
+              {/* Lista de Proyectos */}
               <div className="border-t border-slate-100 pt-2">
                 <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
                   Proyectos ({deptData.proyectos.length})
@@ -464,22 +488,23 @@ export default function ColombiaMap({ proyectos, onSelectProyecto }: Props) {
                 <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
                   {deptData.proyectos.map((p) => (
                     <div key={p.Codigo} className="p-1.5 bg-slate-50 rounded-lg border border-slate-100 flex flex-col gap-1">
-                      <span className="font-semibold text-slate-800 text-[10px] line-clamp-1">{p['Nombre POA']}</span>
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1 flex-wrap">
-                          <span
-                            className="px-1.5 py-0.2 rounded text-white text-[8px] font-semibold"
-                            style={{ backgroundColor: ESTADO_COLORS[p['Nombre Estado']] || '#64748b' }}
-                          >
-                            {p['Nombre Estado']}
-                          </span>
-                          <span className="px-1.5 py-0.2 rounded bg-white text-slate-600 border border-slate-200 text-[8px]">
-                            {p['Tipo Comunidad']}
-                          </span>
-                        </div>
+                        <span className="font-mono text-[9px] text-slate-400 font-semibold">{p.Codigo}</span>
+                        <span
+                          className="px-1.5 py-0.2 rounded text-white text-[8px] font-semibold"
+                          style={{ backgroundColor: ESTADO_COLORS[p['Nombre Estado']] || '#64748b' }}
+                        >
+                          {p['Nombre Estado']}
+                        </span>
+                      </div>
+                      <span className="font-semibold text-slate-800 text-[10px] line-clamp-1">{p['Nombre POA']}</span>
+                      <div className="flex items-center justify-between mt-0.5">
+                        <span className="px-1.5 py-0.2 rounded bg-white text-slate-600 border border-slate-200 text-[8px]">
+                          {p['Tipo Comunidad']}
+                        </span>
                         <button
                           onClick={() => onSelectProyecto(p)}
-                          className="flex items-center gap-0.5 text-[9px] bg-slate-900 hover:bg-slate-800 text-white font-medium px-2 py-0.5 rounded-md transition"
+                          className="flex items-center gap-0.5 text-[9px] bg-slate-900 hover:bg-slate-800 text-white font-medium px-2 py-0.5 rounded-md transition cursor-pointer"
                         >
                           <Eye className="w-3 h-3" /> Ver
                         </button>
