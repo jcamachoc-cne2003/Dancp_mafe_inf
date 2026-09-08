@@ -371,25 +371,16 @@ export default function ColombiaMap({ proyectos, onSelectProyecto }: Props) {
 
       {/* ⚠️ MENSAJE DE ADVERTENCIA CUANDO UN FILTRO ESTÁ SIN SELECCIÓN */}
       {hayFiltroVacio && (
-        <div className="absolute inset-0 z-[1500] flex items-center justify-center p-6 bg-slate-900/20 backdrop-blur-[2px] pointer-events-none">
-          <div className="bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-amber-200 max-w-xs text-center flex flex-col items-center gap-2 pointer-events-auto animate-in fade-in zoom-in-95 duration-150">
-            <AlertCircle className="w-8 h-8 text-amber-500 shrink-0" />
-            <h4 className="text-xs font-bold text-slate-800 uppercase">Sin filtros activos</h4>
-            <p className="text-[11px] text-slate-600 leading-snug">
-              No se mostrarán datos en el mapa debido a que debes seleccionar al menos <strong>un Tipo de Comunidad</strong> y <strong>un Nombre de Estado</strong>.
-            </p>
-            <button
-              onClick={() => {
-                setSelectedEstados(ESTADOS_DISPONIBLES);
-                setSelectedComunidades(COMUNIDADES_DISPONIBLES);
-              }}
-              className="mt-1 text-[10px] bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-1.5 rounded-lg shadow transition cursor-pointer"
-            >
-              Restablecer todos los filtros
-            </button>
-          </div>
-        </div>
-      )}
+  <div className="absolute inset-0 z-[800] flex items-center justify-center p-6 bg-slate-900/20 backdrop-blur-[2px] pointer-events-none">
+    <div className="bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-amber-200 max-w-xs text-center flex flex-col items-center gap-2 pointer-events-auto animate-in fade-in zoom-in-95 duration-150">
+      <AlertCircle className="w-7 h-7 text-amber-500 shrink-0" />
+      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide">Sin filtros activos</h4>
+      <p className="text-[11px] text-slate-600 leading-snug">
+        No se mostrarán datos en el mapa debido a que debes seleccionar al menos <strong>un Tipo de Comunidad</strong> y <strong>un Estado del proyecto</strong>.
+      </p>
+    </div>
+  </div>
+)}
 
       {/* 📌 TARJETA DETALLADA DEL DEPARTAMENTO */}
       {deptData && !hayFiltroVacio && (
