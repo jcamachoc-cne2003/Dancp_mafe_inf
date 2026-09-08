@@ -269,15 +269,18 @@ export default function Dashboard() {
   }, [proyectos, filtroGrafica2Comunidad, uniqueEstados]);
 
   // Tabla
-  const proyectosTabla = useMemo(() => {
-    return proyectos.filter((p) => {
-      const matchPOA = p['Nombre POA']?.toLowerCase().includes(busquedaPOA.toLowerCase());
-      const matchEstado = filtroTablaEstado.includes(p['Nombre Estado']);
-      const matchComunidad = filtroTablaComunidad.includes(p['Tipo Comunidad']);
-      return matchPOA && matchEstado && matchComunidad;
-    });
-  }, [proyectos, busquedaPOA, filtroTablaEstado, filtroTablaComunidad]);
+const proyectosTabla = useMemo(() => {
+  const search = busquedaPOA.toLowerCase().trim();
+  return proyectos.filter((p) => {
+    const matchPOA = p['Nombre POA']?.toLowerCase().includes(search);
+    const matchCodigo = String(p.Codigo ?? '').toLowerCase().includes(search);
+    const matchSearch = !search || matchPOA || matchCodigo;
 
+    const matchEstado = filtroTablaEstado.includes(p['Nombre Estado']);
+    const matchComunidad = filtroTablaComunidad.includes(p['Tipo Comunidad']);
+    return matchSearch && matchEstado && matchComunidad;
+  });
+}, [proyectos, busquedaPOA, filtroTablaEstado, filtroTablaComunidad]);
   const toggleTablaFilter = (item: string, current: string[], setter: React.Dispatch<React.SetStateAction<string[]>>) => {
     setter(current.includes(item) ? current.filter((i) => i !== item) : [...current, item]);
   };
@@ -301,46 +304,72 @@ export default function Dashboard() {
       />
 
       {/* SECCIÓN IZQUIERDA (3/5 ANCHO) */}
-      <div className="w-3/5 h-full flex flex-col border-r border-slate-200 bg-white shadow-xl z-10 overflow-y-auto">
-        
-{/* 📌 HEADER CLARO CON LOGOS MÁS GRANDES Y NOMBRE SiCoPre */}
-<div className="px-4 py-3 border-b border-slate-200 bg-white flex items-center justify-between shadow-xs">
+      <div className="w-3/5 h-full flex flex-col border-r border-slate-200 bg-white shadow-xl z-10 overflow-y-auto relative">
+
+ <div className="absolute top-0 bottom-0 left-0 w-2 flex flex-col z-20 pointer-events-none">
+          <div className="h-1/2 w-full bg-[#FCD116]" title="Amarillo" />
+          <div className="h-1/4 w-full bg-[#003893]" title="Azul" />
+          <div className="h-1/4 w-full bg-[#CE1126]" title="Rojo" />
+        </div>
+
+        {/* 🇨🇴 2. BARRA VERTICAL BORDE DERECHO */}
+        <div className="absolute top-0 bottom-0 right-0 w-2 flex flex-col z-20 pointer-events-none">
+          <div className="h-1/2 w-full bg-[#FCD116]" title="Amarillo" />
+          <div className="h-1/4 w-full bg-[#003893]" title="Azul" />
+          <div className="h-1/4 w-full bg-[#CE1126]" title="Rojo" />
+        </div>
+
+{/* 🇨🇴 FRANJA DECORATIVA SUTIL BANDERA DE COLOMBIA */}
+<div className="h-2 w-full flex shrink-0 shadow-xs">
+  <div className="h-full w-1/2 bg-[#FCD116]" title="Colombia - Amarillo" />
+  <div className="h-full w-1/4 bg-[#003893]" title="Colombia - Azul" />
+  <div className="h-full w-1/4 bg-[#CE1126]" title="Colombia - Rojo" />
+</div>
+
+{/* 📌 HEADER CON LOGOS AGRUPADOS A LA IZQUIERDA Y BOTÓN SOLO A LA DERECHA */}
+<div className="px-4 py-2.5 border-b border-slate-200 bg-white flex items-center justify-between shadow-xs">
+  {/* Sección Izquierda: Logos + Título + Contador */}
   <div className="flex items-center gap-3.5">
-    {/* LOGO 1 (MÁS GRANDE) */}
-    <img 
-      src="/LOGO 1.png" 
-      alt="Logo 1" 
-      className="h-14 md:h-16 w-auto max-w-[130px] object-contain drop-shadow-xs"
-      onError={(e) => (e.currentTarget.style.display = 'none')}
-    />
+    {/* Logos 1 y 2 juntos */}
+    <div className="flex items-center gap-2">
+      <img 
+        src="/LOGO 2.png" 
+        alt="Logo 2" 
+        className="h-12 md:h-14 w-auto max-w-[90px] object-contain drop-shadow-xs"
+        onError={(e) => (e.currentTarget.style.display = 'none')}
+      />
+      <img 
+        src="/LOGO 1.png" 
+        alt="Logo 1" 
+        className="h-12 md:h-14 w-auto max-w-[90px] object-contain drop-shadow-xs"
+        onError={(e) => (e.currentTarget.style.display = 'none')}
+      />
+      
+    </div>
+
+    {/* Divisor sutil */}
+    <div className="h-8 w-px bg-slate-200 hidden sm:block" />
+
+    {/* Nombre SiCoPre y Contador */}
     <div>
-      <h1 className="text-xl font-black tracking-tight text-slate-900">
+      <h1 className="text-xl font-black tracking-tight text-slate-900 leading-none">
         SiCoPre
       </h1>
-      <p className="text-xs text-slate-500 font-semibold">
+      <p className="text-[11px] text-slate-500 font-semibold mt-1">
         Total Proyectos: <span className="text-indigo-600 font-bold">{proyectos.length}</span>
       </p>
     </div>
   </div>
   
-  <div className="flex items-center gap-4">
-    {/* Botón Cargar CSV */}
-    <button
-      onClick={() => fileInputRef.current?.click()}
-      className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3.5 py-2 rounded-xl shadow-sm transition-all hover:shadow cursor-pointer"
-      title="Cargar CSV para reemplazar la base de datos"
-    >
-      <Upload className="w-4 h-4" />
-      <span>Cargar CSV</span>
-    </button>
-    {/* LOGO 2 (MÁS GRANDE) */}
-    <img 
-      src="/LOGO 2.png" 
-      alt="Logo 2" 
-      className="h-14 md:h-16 w-auto max-w-[130px] object-contain drop-shadow-xs"
-      onError={(e) => (e.currentTarget.style.display = 'none')}
-    />
-  </div>
+  {/* Sección Derecha: Botón Cargar CSV solo */}
+  <button
+    onClick={() => fileInputRef.current?.click()}
+    className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3.5 py-2 rounded-xl shadow-sm transition-all hover:shadow cursor-pointer shrink-0"
+    title="Cargar CSV para reemplazar la base de datos"
+  >
+    <Upload className="w-4 h-4" />
+    <span>Cargar CSV</span>
+  </button>
 </div>
 
         {/* Mensaje de Error de Validación CSV */}
@@ -455,10 +484,10 @@ export default function Dashboard() {
           {/* Buscador POA */}
           <input
             type="text"
-            placeholder="Buscar por Nombre POA..."
+            placeholder="Buscar por Codigo o Nombre POA..."
             value={busquedaPOA}
             onChange={(e) => setBusquedaPOA(e.target.value)}
-            className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mb-3 outline-none focus:border-indigo-500 transition"
+            className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mb-3 outline-none focus:border-indigo-500 transition focus:bg-white transition shadow-xs"
           />
 
           {/* Tabla con Columna de Código */}
