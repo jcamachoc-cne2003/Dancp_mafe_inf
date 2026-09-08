@@ -477,8 +477,8 @@ export default function ColombiaMap({ proyectos, onSelectProyecto }: Props) {
                   Proyectos ({deptData.proyectos.length})
                 </span>
                 <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
-                  {deptData.proyectos.map((p) => (
-                    <div key={p.Codigo} className="p-1.5 bg-slate-50 rounded-lg border border-slate-100 flex flex-col gap-1">
+                  {deptData.proyectos.map((p, index) => (
+                    <div key={`${p.Codigo}-${index}`} className="p-1.5 bg-slate-50 rounded-lg border border-slate-100 flex flex-col gap-1">
                       <div className="flex items-center justify-between">
                         <span className="font-mono text-[9px] text-slate-400 font-semibold">{p.Codigo}</span>
                         <span

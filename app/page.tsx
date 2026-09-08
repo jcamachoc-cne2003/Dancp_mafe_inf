@@ -551,8 +551,8 @@ const proyectosTabla = useMemo(() => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {proyectosTabla.map((p) => (
-                  <tr key={p.Codigo} className="hover:bg-slate-50/80 transition">
+  {proyectosTabla.map((p, index) => (
+    <tr key={`${p.Codigo}-${index}`} className="hover:bg-slate-50/80 transition">
                     {/* Código del Proyecto */}
                     <td className="p-2.5 font-mono text-[10px] text-slate-500 font-semibold align-top whitespace-nowrap">
                       {p.Codigo}
